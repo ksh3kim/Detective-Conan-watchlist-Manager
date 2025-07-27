@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>명탐정 코난 시청 기록 관리</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 커스텀 스크롤바 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* 아코디언 콘텐츠 전환 효과 */
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .accordion-content.open {
+            max-height: 2000px; /* 충분히 큰 값 */
+            transition: max-height 0.5s ease-in;
+        }
+
+        /* 커스텀 체크박스 */
+        .custom-checkbox:checked {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .custom-checkbox:checked::before {
+            content: '✔';
+            color: white;
+            font-size: 12px;
+            line-height: 16px;
+            text-align: center;
+            display: block;
+        }
+        
+        /* 국기 버튼 스타일 (GitHub Raw URL 사용) */
+        .btn-inactive {
+            background-color: #e5e7eb; /* gray-200 */
+            color: #4b5563; /* gray-600 */
+        }
+        .btn-kr-active {
+            background-image: url("https://raw.githubusercontent.com/ksh3kim/project-img/main/korean.png");
+            background-size: cover;
+            background-position: center;
+            color: white;
+            text-shadow: 0 0 4px black;
+        }
+        .btn-jp-active {
+            background-image: url("https://raw.githubusercontent.com/ksh3kim/project-img/main/japanese.png");
+            background-size: cover;
+            background-position: center;
+            color: white;
+            text-shadow: 0 0 4px black;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div id="app" class="max-w-2xl mx-auto bg-white min-h-screen shadow-lg flex flex-col">
+        <div class="flex-grow">
+            <!-- 헤더 -->
+            <header class="sticky top-0 bg-white/80 backdrop-blur-sm z-10 p-4 border-b flex justify-between items-center">
+                <!-- 로고 크기 h-10 -> h-12 -->
+                <img src="https://raw.githubusercontent.com/ksh3kim/project-img/main/Regulus_logo.png" alt="Logo" class="h-12">
+                <!-- 제목은 헤더 밖으로 이동 -->
+                <!-- 오른쪽 버튼들 -->
+                <div class="flex items-center space-x-2">
+                    <button id="kr-btn" class="px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all"></button>
+                    <button id="jp-btn" class="px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all"></button>
+                    <button id="reset-btn" title="시청 기록 초기화" class="px-3 py-1 text-sm font-semibold text-gray-600 bg-gray-200 rounded-full shadow-sm">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 제목 섹션 -->
+            <div class="bg-white p-3 border-b">
+                <h1 class="text-center text-xl font-bold text-gray-800">명탐정 코난 시청 기록 관리매니저</h1>
+            </div>
+
+            <!-- 컨트롤 패널 -->
+            <div class="p-4 bg-gray-50 border-b space-y-4">
+                <!-- 검색 바 -->
+                <div class="relative">
+                    <input type="text" id="search-bar" placeholder="제목으로 검색..." class="w-full p-2 pl-8 border rounded-md focus:ring-2 focus:ring-blue-500">
+                    <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-gray-400"></i>
+                </div>
+
+                <!-- 필터 버튼 -->
+                <div class="flex space-x-2">
+                    <button data-filter="all" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">전체</button>
+                    <button data-filter="watched" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">시청</button>
+                    <button data-filter="unwatched" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">미시청</button>
+                </div>
+                
+                <!-- 기능 버튼들 -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button id="add-episode-toggle" class="w-full text-left p-2 bg-gray-200 rounded-md text-sm font-semibold text-gray-700">
+                        <i class="fa-solid fa-plus mr-1"></i>새 회차 추가
+                    </button>
+                    <button id="export-btn" class="w-full p-2 bg-green-500 text-white rounded-md text-sm font-semibold">
+                        <i class="fa-solid fa-file-export mr-1"></i>내보내기
+                    </button>
+                    <button id="import-btn" class="w-full p-2 bg-blue-500 text-white rounded-md text-sm font-semibold">
+                        <i class="fa-solid fa-file-import mr-1"></i>가져오기
+                    </button>
+                    <input type="file" id="import-file-input" class="hidden" accept=".json">
+                </div>
+
+                <!-- 회차 추가 폼 -->
+                <div id="add-episode-form" class="hidden p-4 bg-white border rounded-md">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <input type="number" id="new-jp-ep" placeholder="일본판 회차" class="p-2 border rounded-md w-full">
+                        <input type="number" id="new-kr-season" placeholder="한국판 시즌" class="p-2 border rounded-md w-full">
+                        <input type="number" id="new-kr-ep" placeholder="한국판 회차" class="p-2 border rounded-md w-full">
+                        <input type="text" id="new-title" placeholder="에피소드 제목" class="p-2 border rounded-md w-full sm:col-span-2">
+                    </div>
+                    <button id="add-episode-btn" class="mt-4 w-full px-4 py-2 font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600">추가</button>
+                </div>
+            </div>
+
+            <!-- 에피소드 목록 -->
+            <main id="episode-list" class="p-4 space-y-2">
+                <!-- 에피소드 렌더링 영역 -->
+            </main>
+        </div>
+
+        <!-- 푸터 및 편집/삭제 영역 -->
+        <footer class="p-4 bg-gray-100 border-t mt-auto">
+            <div id="edit-mode-controls" class="text-center space-y-2">
+                <button id="edit-mode-toggle" class="px-4 py-2 text-sm font-semibold text-white bg-gray-600 rounded-md shadow-sm hover:bg-gray-700">
+                    <i class="fa-solid fa-gear"></i> 편집 모드 시작
+                </button>
+                <div id="danger-zone" class="hidden p-4 bg-red-50 border border-red-200 rounded-md space-y-2">
+                    <p class="text-sm text-red-700 font-bold">주의: 삭제 작업은 되돌릴 수 없습니다.</p>
+                    <button id="delete-all-btn" class="w-full px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md shadow-sm hover:bg-red-700">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 모든 에피소드 삭제
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 초기 데이터 제거 ---
+            const initialEpisodes = [];
+
+            // --- 상태 관리 ---
+            let episodes = [];
+            let currentView = 'kr';
+            let currentFilter = 'all';
+            let searchTerm = '';
+            let openSeasons = new Set();
+            let isEditMode = false;
+
+            // --- DOM 요소 ---
+            const episodeListContainer = document.getElementById('episode-list');
+            const krBtn = document.getElementById('kr-btn');
+            const jpBtn = document.getElementById('jp-btn');
+            const resetBtn = document.getElementById('reset-btn');
+            const searchBar = document.getElementById('search-bar');
+            const filterBtns = document.querySelectorAll('.filter-btn');
+            const addEpisodeToggle = document.getElementById('add-episode-toggle');
+            const addEpisodeForm = document.getElementById('add-episode-form');
+            const addEpisodeBtn = document.getElementById('add-episode-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const importBtn = document.getElementById('import-btn');
+            const importFileInput = document.getElementById('import-file-input');
+            const editModeToggle = document.getElementById('edit-mode-toggle');
+            const dangerZone = document.getElementById('danger-zone');
+            const deleteAllBtn = document.getElementById('delete-all-btn');
+
+            // --- 데이터 저장/불러오기 ---
+            function saveData() {
+                const dataToSave = { episodes, openSeasons: Array.from(openSeasons) };
+                localStorage.setItem('conanAppState_v4', JSON.stringify(dataToSave));
+            }
+
+            function loadData() {
+                const savedState = localStorage.getItem('conanAppState_v4');
+                if (savedState) {
+                    const loadedState = JSON.parse(savedState);
+                    episodes = loadedState.episodes || initialEpisodes;
+                    openSeasons = new Set(loadedState.openSeasons || []);
+                } else {
+                    episodes = initialEpisodes;
+                }
+                episodes.sort((a, b) => a.jp_ep - b.jp_ep);
+            }
+
+            // --- 렌더링 함수 ---
+            function render() {
+                let episodesToRender = [...episodes];
+                if (searchTerm) { episodesToRender = episodesToRender.filter(ep => ep.title.toLowerCase().includes(searchTerm.toLowerCase())); }
+                if (currentFilter === 'watched') { episodesToRender = episodesToRender.filter(e => e.watched); } 
+                else if (currentFilter === 'unwatched') { episodesToRender = episodesToRender.filter(e => !e.watched); }
+
+                episodeListContainer.innerHTML = '';
+                if (episodesToRender.length === 0) {
+                    episodeListContainer.innerHTML = `<p class="text-center text-gray-500 py-8">표시할 에피소드가 없습니다.<br>새 회차를 추가하거나 데이터를 가져오세요.</p>`;
+                } else {
+                    if (currentView === 'kr') { renderKoreanView(episodesToRender); } 
+                    else { renderJapaneseView(episodesToRender); }
+                }
+                
+                updateViewButtons();
+                updateFilterButtons();
+                updateEditModeUI();
+            }
+            
+            function renderKoreanView(episodesToRender) {
+                const seasons = episodesToRender.reduce((acc, ep) => {
+                    const season = ep.kr_season || 0;
+                    if (!acc[season]) acc[season] = [];
+                    acc[season].push(ep);
+                    return acc;
+                }, {});
+
+                Object.keys(seasons).sort((a, b) => a - b).forEach(seasonNum => {
+                    const seasonEpisodes = seasons[seasonNum].sort((a,b) => a.kr_ep - b.kr_ep);
+                    const seasonContainer = document.createElement('div');
+                    seasonContainer.className = 'bg-white rounded-lg shadow-sm border';
+                    const allWatchedInSeason = episodes.filter(e => e.kr_season == seasonNum).every(e => e.watched);
+                    const isSeasonOpen = openSeasons.has(seasonNum);
+                    
+                    const header = document.createElement('div');
+                    header.className = 'p-3 flex justify-between items-center cursor-pointer';
+                    header.dataset.season = seasonNum;
+                    header.innerHTML = `
+                        <div class="flex items-center"><h2 class="font-bold text-lg text-gray-800">시즌 ${seasonNum}</h2><span class="ml-2 text-sm text-gray-500">(${seasonEpisodes.length}개)</span></div>
+                        <div class="flex items-center space-x-3"><label class="flex items-center space-x-1 text-xs cursor-pointer"><span>전체선택</span><input type="checkbox" class="season-check w-4 h-4" data-season="${seasonNum}" ${allWatchedInSeason ? 'checked' : ''}></label><i class="fa-solid fa-chevron-down transition-transform ${isSeasonOpen ? 'rotate-180' : ''}"></i></div>
+                    `;
+                    
+                    const content = document.createElement('div');
+                    content.className = `accordion-content border-t ${isSeasonOpen ? 'open' : ''}`;
+                    seasonEpisodes.forEach(ep => content.appendChild(createEpisodeElement(ep)));
+                    seasonContainer.append(header, content);
+                    episodeListContainer.appendChild(seasonContainer);
+                });
+            }
+
+            function renderJapaneseView(episodesToRender) {
+                episodesToRender.forEach(ep => episodeListContainer.appendChild(createEpisodeElement(ep)));
+            }
+
+            function createEpisodeElement(ep) {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-md hover:bg-gray-100';
+                el.dataset.id = ep.id;
+                const krLabel = `(시즌${ep.kr_season}-${ep.kr_ep}화)`;
+                const jpLabel = `${ep.jp_ep}화`;
+
+                const deleteButtonHTML = isEditMode ? `
+                    <button data-id="${ep.id}" class="delete-episode-btn text-red-500 hover:text-red-700 ml-4" title="이 에피소드 삭제">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                ` : '';
+
+                el.innerHTML = `
+                    <div class="flex items-center flex-grow">
+                        <input type="checkbox" data-id="${ep.id}" class="episode-check custom-checkbox w-4 h-4 mr-4 rounded border-gray-300 focus:ring-blue-500" ${ep.watched ? 'checked' : ''}>
+                        <div class="flex-grow">
+                            <p class="font-semibold text-gray-800">${ep.title}</p>
+                            <p class="text-sm text-gray-500">${currentView === 'jp' ? jpLabel : krLabel}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-sm font-mono px-2 py-1 rounded bg-gray-200 text-gray-600">${currentView === 'jp' ? krLabel : jpLabel}</span>
+                        ${deleteButtonHTML}
+                    </div>
+                `;
+                return el;
+            }
+
+            // --- UI 업데이트 함수 ---
+            function updateViewButtons() {
+                krBtn.textContent = '한국판';
+                jpBtn.textContent = '일본판';
+                krBtn.className = 'px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all ';
+                jpBtn.className = 'px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all ';
+
+                if (currentView === 'kr') {
+                    krBtn.classList.add('btn-kr-active');
+                    jpBtn.classList.add('btn-inactive');
+                } else {
+                    jpBtn.classList.add('btn-jp-active');
+                    krBtn.classList.add('btn-inactive');
+                }
+            }
+
+            function updateFilterButtons() {
+                filterBtns.forEach(btn => {
+                    btn.classList.remove('bg-gray-700', 'text-white', 'bg-white', 'text-gray-700');
+                    if (btn.dataset.filter === currentFilter) {
+                        btn.classList.add('bg-gray-700', 'text-white');
+                    } else {
+                        btn.classList.add('bg-white', 'text-gray-700');
+                    }
+                });
+            }
+
+            function updateEditModeUI() {
+                if (isEditMode) {
+                    editModeToggle.innerHTML = `<i class="fa-solid fa-check"></i> 편집 모드 종료`;
+                    editModeToggle.classList.remove('bg-gray-600', 'hover:bg-gray-700');
+                    editModeToggle.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    dangerZone.classList.remove('hidden');
+                } else {
+                    editModeToggle.innerHTML = `<i class="fa-solid fa-gear"></i> 편집 모드 시작`;
+                    editModeToggle.classList.add('bg-gray-600', 'hover:bg-gray-700');
+                    editModeToggle.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    dangerZone.classList.add('hidden');
+                }
+            }
+
+            // --- 이벤트 핸들러 ---
+            function handleReset() {
+                if (confirm('정말로 모든 시청 기록을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+                    episodes.forEach(ep => { ep.watched = false; });
+                    saveData();
+                    render();
+                }
+            }
+            
+            function handleExport() {
+                if (episodes.length === 0) {
+                    alert('내보낼 데이터가 없습니다.');
+                    return;
+                }
+                const dataStr = JSON.stringify({ episodes: episodes, openSeasons: Array.from(openSeasons) }, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                const date = new Date().toISOString().slice(0, 10);
+                link.download = `conan-progress-${date}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            function handleImport(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedState = JSON.parse(e.target.result);
+                        if (importedState && Array.isArray(importedState.episodes)) {
+                            if (confirm('데이터를 가져오면 현재 진행 상황을 덮어쓰게 됩니다. 계속하시겠습니까?')) {
+                                episodes = importedState.episodes;
+                                openSeasons = new Set(importedState.openSeasons || []);
+                                saveData();
+                                render();
+                                alert('성공적으로 데이터를 가져왔습니다.');
+                            }
+                        } else { throw new Error('Invalid file format'); }
+                    } catch (error) {
+                        alert('파일을 가져오는 데 실패했습니다. 유효한 JSON 파일인지 확인해주세요.');
+                    } finally {
+                        importFileInput.value = '';
+                    }
+                };
+                reader.readAsText(file);
+            }
+            
+            function handleViewChange(view) { currentView = view; render(); }
+            function handleFilterChange(filter) { currentFilter = filter; render(); }
+
+            function handleEpisodeCheck(id, checked) {
+                const episode = episodes.find(e => e.id === id);
+                if (episode) {
+                    episode.watched = checked;
+                    saveData();
+                    if (currentFilter !== 'all' || searchTerm) { render(); } else {
+                        const checkboxInList = episodeListContainer.querySelector(`.episode-check[data-id="${id}"]`);
+                        if(checkboxInList) checkboxInList.checked = checked;
+                        const seasonNum = episode.kr_season;
+                        const seasonEpisodes = episodes.filter(ep => ep.kr_season == seasonNum);
+                        const allWatchedInSeason = seasonEpisodes.every(ep => ep.watched);
+                        const seasonCheckbox = episodeListContainer.querySelector(`.season-check[data-season="${seasonNum}"]`);
+                        if(seasonCheckbox) seasonCheckbox.checked = allWatchedInSeason;
+                    }
+                }
+            }
+            function handleSeasonCheck(seasonNum, checked) {
+                episodes.forEach(ep => { if (ep.kr_season == seasonNum) ep.watched = checked; });
+                saveData();
+                render();
+            }
+            function handleAccordionToggle(seasonNum) {
+                if (openSeasons.has(seasonNum)) openSeasons.delete(seasonNum);
+                else openSeasons.add(seasonNum);
+                saveData();
+                const header = episodeListContainer.querySelector(`.p-3[data-season="${seasonNum}"]`);
+                if(header) {
+                    header.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
+                    header.nextElementSibling.classList.toggle('open');
+                }
+            }
+            function handleAddEpisode() { 
+                const jp_ep = parseInt(document.getElementById('new-jp-ep').value);
+                const kr_season = parseInt(document.getElementById('new-kr-season').value);
+                const kr_ep = parseInt(document.getElementById('new-kr-ep').value);
+                const title = document.getElementById('new-title').value.trim();
+
+                if (!jp_ep || !kr_season || !kr_ep || !title) {
+                    alert('모든 필드를 입력해주세요.');
+                    return;
+                }
+
+                const newEpisode = { id: `jp-${jp_ep}`, jp_ep, kr_season, kr_ep, title, watched: false };
+                if (episodes.some(ep => ep.id === newEpisode.id)) {
+                    alert('이미 존재하는 일본판 회차입니다.');
+                    return;
+                }
+
+                episodes.push(newEpisode);
+                episodes.sort((a, b) => a.jp_ep - b.jp_ep);
+                saveData();
+                
+                document.getElementById('new-jp-ep').value = '';
+                document.getElementById('new-kr-season').value = '';
+                document.getElementById('new-kr-ep').value = '';
+                document.getElementById('new-title').value = '';
+                
+                addEpisodeForm.classList.add('hidden');
+                render();
+             }
+
+            function handleToggleEditMode() {
+                isEditMode = !isEditMode;
+                render();
+            }
+
+            function handleDeleteEpisode(id) {
+                const episodeToDelete = episodes.find(ep => ep.id === id);
+                if (!episodeToDelete) return;
+                
+                if (confirm(`'${episodeToDelete.title}' 에피소드를 정말로 삭제하시겠습니까?`)) {
+                    episodes = episodes.filter(ep => ep.id !== id);
+                    saveData();
+                    render();
+                }
+            }
+
+            function handleDeleteAll() {
+                if (confirm('정말로 모든 에피소드 목록을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다!')) {
+                    episodes = [];
+                    saveData();
+                    render();
+                }
+            }
+
+            // --- 이벤트 리스너 등록 ---
+            krBtn.addEventListener('click', () => handleViewChange('kr'));
+            jpBtn.addEventListener('click', () => handleViewChange('jp'));
+            resetBtn.addEventListener('click', handleReset);
+            exportBtn.addEventListener('click', handleExport);
+            importBtn.addEventListener('click', () => importFileInput.click());
+            importFileInput.addEventListener('change', handleImport);
+            searchBar.addEventListener('input', (e) => { searchTerm = e.target.value; render(); });
+            filterBtns.forEach(btn => btn.addEventListener('click', () => handleFilterChange(btn.dataset.filter)));
+            addEpisodeToggle.addEventListener('click', () => addEpisodeForm.classList.toggle('hidden'));
+            addEpisodeBtn.addEventListener('click', handleAddEpisode);
+            editModeToggle.addEventListener('click', handleToggleEditMode);
+            deleteAllBtn.addEventListener('click', handleDeleteAll);
+
+            episodeListContainer.addEventListener('click', (e) => {
+                const target = e.target;
+                const deleteBtn = target.closest('.delete-episode-btn');
+                if (deleteBtn) { handleDeleteEpisode(deleteBtn.dataset.id); return; }
+                if (target.matches('.episode-check')) { handleEpisodeCheck(target.dataset.id, target.checked); return; }
+                if (target.matches('.season-check')) { handleSeasonCheck(target.dataset.season, target.checked); return; }
+                const header = target.closest('.p-3[data-season]');
+                if (header) { handleAccordionToggle(header.dataset.season); }
+            });
+
+            // --- 초기화 ---
+            loadData();
+            render();
+        });
+    </script>
+</body>
+</html>
