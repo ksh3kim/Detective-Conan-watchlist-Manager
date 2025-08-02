@@ -6,6 +6,7 @@
     <title>명탐정 코난 시청 기록 관리</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* 커스텀 스크롤바 */
         ::-webkit-scrollbar { width: 8px; }
@@ -65,10 +66,7 @@
         <div class="flex-grow">
             <!-- 헤더 -->
             <header class="sticky top-0 bg-white/80 backdrop-blur-sm z-10 p-4 border-b flex justify-between items-center">
-                <!-- 로고 크기 h-10 -> h-12 -->
                 <img src="https://raw.githubusercontent.com/ksh3kim/project-img/main/Regulus_logo.png" alt="Logo" class="h-12">
-                <!-- 제목은 헤더 밖으로 이동 -->
-                <!-- 오른쪽 버튼들 -->
                 <div class="flex items-center space-x-2">
                     <button id="kr-btn" class="px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all"></button>
                     <button id="jp-btn" class="px-3 py-1 text-sm font-semibold rounded-full shadow-sm transition-all"></button>
@@ -85,52 +83,52 @@
 
             <!-- 컨트롤 패널 -->
             <div class="p-4 bg-gray-50 border-b space-y-4">
-                <!-- 검색 바 -->
                 <div class="relative">
                     <input type="text" id="search-bar" placeholder="제목으로 검색..." class="w-full p-2 pl-8 border rounded-md focus:ring-2 focus:ring-blue-500">
                     <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-gray-400"></i>
                 </div>
 
-                <!-- 필터 버튼 -->
                 <div class="flex space-x-2">
                     <button data-filter="all" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">전체</button>
                     <button data-filter="watched" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">시청</button>
                     <button data-filter="unwatched" class="filter-btn w-1/3 px-4 py-2 text-sm font-medium rounded-md shadow-sm">미시청</button>
                 </div>
                 
-                <!-- 기능 버튼들 -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button id="add-episode-toggle" class="w-full text-left p-2 bg-gray-200 rounded-md text-sm font-semibold text-gray-700">
                         <i class="fa-solid fa-plus mr-1"></i>새 회차 추가
                     </button>
-                    <button id="export-btn" class="w-full p-2 bg-green-500 text-white rounded-md text-sm font-semibold">
-                        <i class="fa-solid fa-file-export mr-1"></i>내보내기
-                    </button>
+                    <div class="relative" id="export-container">
+                        <button id="export-btn-toggle" class="w-full p-2 bg-green-500 text-white rounded-md text-sm font-semibold">
+                            <i class="fa-solid fa-file-export mr-1"></i>내보내기
+                        </button>
+                        <div id="export-options" class="hidden absolute right-0 mt-2 w-full bg-white rounded-md shadow-lg z-10">
+                            <a href="#" data-format="csv" class="export-format-btn block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">CSV로 저장</a>
+                            <a href="#" data-format="txt" class="export-format-btn block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">TXT로 저장</a>
+                        </div>
+                    </div>
                     <button id="import-btn" class="w-full p-2 bg-blue-500 text-white rounded-md text-sm font-semibold">
                         <i class="fa-solid fa-file-import mr-1"></i>가져오기
                     </button>
-                    <input type="file" id="import-file-input" class="hidden" accept=".json">
+                    <input type="file" id="import-file-input" class="hidden" accept=".json,.csv,.txt,.xlsx">
                 </div>
 
-                <!-- 회차 추가 폼 -->
+                <!-- [수정] 새 회차 추가 폼 변경 -->
                 <div id="add-episode-form" class="hidden p-4 bg-white border rounded-md">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <input type="number" id="new-jp-ep" placeholder="일본판 회차" class="p-2 border rounded-md w-full">
-                        <input type="number" id="new-kr-season" placeholder="한국판 시즌" class="p-2 border rounded-md w-full">
-                        <input type="number" id="new-kr-ep" placeholder="한국판 회차" class="p-2 border rounded-md w-full">
+                        <input type="text" id="new-kr-ep-str" placeholder="한국판 화수 (예: 1-1 or 애X1-1)" class="p-2 border rounded-md w-full">
                         <input type="text" id="new-title" placeholder="에피소드 제목" class="p-2 border rounded-md w-full sm:col-span-2">
                     </div>
                     <button id="add-episode-btn" class="mt-4 w-full px-4 py-2 font-semibold text-white bg-blue-500 rounded-md hover:bg-blue-600">추가</button>
                 </div>
             </div>
 
-            <!-- 에피소드 목록 -->
             <main id="episode-list" class="p-4 space-y-2">
                 <!-- 에피소드 렌더링 영역 -->
             </main>
         </div>
 
-        <!-- 푸터 및 편집/삭제 영역 -->
         <footer class="p-4 bg-gray-100 border-t mt-auto">
             <div id="edit-mode-controls" class="text-center space-y-2">
                 <button id="edit-mode-toggle" class="px-4 py-2 text-sm font-semibold text-white bg-gray-600 rounded-md shadow-sm hover:bg-gray-700">
@@ -148,10 +146,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- 초기 데이터 제거 ---
             const initialEpisodes = [];
-
-            // --- 상태 관리 ---
             let episodes = [];
             let currentView = 'kr';
             let currentFilter = 'all';
@@ -159,7 +154,6 @@
             let openSeasons = new Set();
             let isEditMode = false;
 
-            // --- DOM 요소 ---
             const episodeListContainer = document.getElementById('episode-list');
             const krBtn = document.getElementById('kr-btn');
             const jpBtn = document.getElementById('jp-btn');
@@ -169,21 +163,21 @@
             const addEpisodeToggle = document.getElementById('add-episode-toggle');
             const addEpisodeForm = document.getElementById('add-episode-form');
             const addEpisodeBtn = document.getElementById('add-episode-btn');
-            const exportBtn = document.getElementById('export-btn');
+            const exportBtnToggle = document.getElementById('export-btn-toggle');
+            const exportOptions = document.getElementById('export-options');
             const importBtn = document.getElementById('import-btn');
             const importFileInput = document.getElementById('import-file-input');
             const editModeToggle = document.getElementById('edit-mode-toggle');
             const dangerZone = document.getElementById('danger-zone');
             const deleteAllBtn = document.getElementById('delete-all-btn');
 
-            // --- 데이터 저장/불러오기 ---
             function saveData() {
                 const dataToSave = { episodes, openSeasons: Array.from(openSeasons) };
-                localStorage.setItem('conanAppState_v4', JSON.stringify(dataToSave));
+                localStorage.setItem('conanAppState_v_final_fixed', JSON.stringify(dataToSave));
             }
 
             function loadData() {
-                const savedState = localStorage.getItem('conanAppState_v4');
+                const savedState = localStorage.getItem('conanAppState_v_final_fixed');
                 if (savedState) {
                     const loadedState = JSON.parse(savedState);
                     episodes = loadedState.episodes || initialEpisodes;
@@ -194,7 +188,6 @@
                 episodes.sort((a, b) => a.jp_ep - b.jp_ep);
             }
 
-            // --- 렌더링 함수 ---
             function render() {
                 let episodesToRender = [...episodes];
                 if (searchTerm) { episodesToRender = episodesToRender.filter(ep => ep.title.toLowerCase().includes(searchTerm.toLowerCase())); }
@@ -214,27 +207,42 @@
                 updateEditModeUI();
             }
             
+            // [수정] 한국판 뷰 렌더링 로직
             function renderKoreanView(episodesToRender) {
                 const seasons = episodesToRender.reduce((acc, ep) => {
-                    const season = ep.kr_season || 0;
-                    if (!acc[season]) acc[season] = [];
-                    acc[season].push(ep);
+                    const seasonKey = `${ep.kr_prefix || ''}${ep.kr_season}`;
+                    if (!acc[seasonKey]) {
+                        acc[seasonKey] = [];
+                    }
+                    acc[seasonKey].push(ep);
                     return acc;
                 }, {});
 
-                Object.keys(seasons).sort((a, b) => a - b).forEach(seasonNum => {
-                    const seasonEpisodes = seasons[seasonNum].sort((a,b) => a.kr_ep - b.kr_ep);
+                Object.keys(seasons).sort((a, b) => {
+                    const aNum = parseInt(a.replace(/[^0-9]/g, ''), 10);
+                    const bNum = parseInt(b.replace(/[^0-9]/g, ''), 10);
+                    return aNum - bNum;
+                }).forEach(seasonKey => {
+                    const seasonEpisodes = seasons[seasonKey].sort((a,b) => a.kr_ep - b.kr_ep);
                     const seasonContainer = document.createElement('div');
                     seasonContainer.className = 'bg-white rounded-lg shadow-sm border';
-                    const allWatchedInSeason = episodes.filter(e => e.kr_season == seasonNum).every(e => e.watched);
-                    const isSeasonOpen = openSeasons.has(seasonNum);
+                    
+                    const firstEp = seasonEpisodes[0];
+                    const allOriginalEpisodesInSeason = episodes.filter(e => e.kr_season === firstEp.kr_season && e.kr_prefix === firstEp.kr_prefix);
+                    const allWatchedInSeason = allOriginalEpisodesInSeason.every(e => e.watched);
+                    const isSeasonOpen = openSeasons.has(seasonKey);
+
+                    let seasonTitle = `시즌 ${firstEp.kr_season}`;
+                    if (firstEp.kr_prefix === '애X') {
+                        seasonTitle = `애니박스 미공개 X파일 시즌${firstEp.kr_season}`;
+                    }
                     
                     const header = document.createElement('div');
                     header.className = 'p-3 flex justify-between items-center cursor-pointer';
-                    header.dataset.season = seasonNum;
+                    header.dataset.seasonKey = seasonKey;
                     header.innerHTML = `
-                        <div class="flex items-center"><h2 class="font-bold text-lg text-gray-800">시즌 ${seasonNum}</h2><span class="ml-2 text-sm text-gray-500">(${seasonEpisodes.length}개)</span></div>
-                        <div class="flex items-center space-x-3"><label class="flex items-center space-x-1 text-xs cursor-pointer"><span>전체선택</span><input type="checkbox" class="season-check w-4 h-4" data-season="${seasonNum}" ${allWatchedInSeason ? 'checked' : ''}></label><i class="fa-solid fa-chevron-down transition-transform ${isSeasonOpen ? 'rotate-180' : ''}"></i></div>
+                        <div class="flex items-center"><h2 class="font-bold text-lg text-gray-800">${seasonTitle}</h2><span class="ml-2 text-sm text-gray-500">(${seasonEpisodes.length}개)</span></div>
+                        <div class="flex items-center space-x-3"><label class="flex items-center space-x-1 text-xs cursor-pointer"><span>전체선택</span><input type="checkbox" class="season-check w-4 h-4" data-season-key="${seasonKey}" ${allWatchedInSeason ? 'checked' : ''}></label><i class="fa-solid fa-chevron-down transition-transform ${isSeasonOpen ? 'rotate-180' : ''}"></i></div>
                     `;
                     
                     const content = document.createElement('div');
@@ -249,11 +257,16 @@
                 episodesToRender.forEach(ep => episodeListContainer.appendChild(createEpisodeElement(ep)));
             }
 
+            // [수정] 에피소드 요소 생성 로직
             function createEpisodeElement(ep) {
                 const el = document.createElement('div');
                 el.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-md hover:bg-gray-100';
                 el.dataset.id = ep.id;
-                const krLabel = `(시즌${ep.kr_season}-${ep.kr_ep}화)`;
+                
+                let krLabel = `(시즌${ep.kr_season}-${ep.kr_ep}화)`;
+                if (ep.kr_prefix === '애X') {
+                    krLabel = `(애니박스 미공개 X파일 시즌${ep.kr_season}-${ep.kr_ep}화)`;
+                }
                 const jpLabel = `${ep.jp_ep}화`;
 
                 const deleteButtonHTML = isEditMode ? `
@@ -271,14 +284,23 @@
                         </div>
                     </div>
                     <div class="flex items-center">
-                        <span class="text-sm font-mono px-2 py-1 rounded bg-gray-200 text-gray-600">${currentView === 'jp' ? krLabel : jpLabel}</span>
+                         <span class="text-sm font-mono px-2 py-1 rounded" style="background-color: ${ep.colorCode || '#E5E7EB'}; color: ${getContrastYIQ(ep.colorCode || '#E5E7EB')}">${ep.category || 'TV'}</span>
                         ${deleteButtonHTML}
                     </div>
                 `;
                 return el;
             }
+            
+            function getContrastYIQ(hexcolor){
+                if(!hexcolor) return 'black';
+                hexcolor = hexcolor.replace("#", "");
+                var r = parseInt(hexcolor.substr(0,2),16);
+                var g = parseInt(hexcolor.substr(2,2),16);
+                var b = parseInt(hexcolor.substr(4,2),16);
+                var yiq = ((r*299)+(g*587)+(b*114))/1000;
+                return (yiq >= 128) ? 'black' : 'white';
+            }
 
-            // --- UI 업데이트 함수 ---
             function updateViewButtons() {
                 krBtn.textContent = '한국판';
                 jpBtn.textContent = '일본판';
@@ -319,7 +341,6 @@
                 }
             }
 
-            // --- 이벤트 핸들러 ---
             function handleReset() {
                 if (confirm('정말로 모든 시청 기록을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
                     episodes.forEach(ep => { ep.watched = false; });
@@ -328,18 +349,25 @@
                 }
             }
             
-            function handleExport() {
+            function handleExport(format) {
                 if (episodes.length === 0) {
                     alert('내보낼 데이터가 없습니다.');
                     return;
                 }
-                const dataStr = JSON.stringify({ episodes: episodes, openSeasons: Array.from(openSeasons) }, null, 2);
-                const dataBlob = new Blob([dataStr], { type: 'application/json' });
-                const url = URL.createObjectURL(dataBlob);
+
+                const fileExtension = format.toLowerCase();
+                const header = "일본판 화수|한국판 화수|제목|에피소드 분류 키워드|에피소드 컬러 코드|시청 상태";
+                const rows = episodes.map(ep => {
+                    return [ep.jp_ep, ep.kr_ep_str, ep.title, ep.category || 'TV', ep.colorCode || '#FFFFFF', ep.watched].join('|');
+                });
+
+                const content = [header, ...rows].join('\n');
+                const blob = new Blob([`\uFEFF${content}`], { type: `text/${fileExtension};charset=utf-8;` });
+                const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
                 const date = new Date().toISOString().slice(0, 10);
-                link.download = `conan-progress-${date}.json`;
+                link.download = `conan-progress-${date}.${fileExtension}`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -349,26 +377,102 @@
             function handleImport(event) {
                 const file = event.target.files[0];
                 if (!file) return;
+
                 const reader = new FileReader();
+                const fileExtension = file.name.split('.').pop().toLowerCase();
+
                 reader.onload = (e) => {
                     try {
-                        const importedState = JSON.parse(e.target.result);
-                        if (importedState && Array.isArray(importedState.episodes)) {
-                            if (confirm('데이터를 가져오면 현재 진행 상황을 덮어쓰게 됩니다. 계속하시겠습니까?')) {
-                                episodes = importedState.episodes;
-                                openSeasons = new Set(importedState.openSeasons || []);
+                        let importedEpisodes = [];
+
+                        if (fileExtension === 'json') {
+                             const importedData = JSON.parse(e.target.result);
+                            if (importedData.episodes && Array.isArray(importedData.episodes)) {
+                                importedEpisodes = importedData.episodes;
+                            } else {
+                                throw new Error("이전 버전의 백업 파일(JSON)만 지원됩니다.");
+                            }
+                        } else if (fileExtension === 'csv' || fileExtension === 'txt') {
+                            const lines = e.target.result.split(/\r?\n/);
+                            if (lines.length > 0 && lines[0].includes("일본판 화수")) {
+                                lines.shift(); 
+                            }
+                            const customData = lines.filter(line => line.trim() !== '').map(line => {
+                                const [jp_ep, kr_ep_str, title, category, colorCode, watched] = line.split('|');
+                                return { "일본판 화수": jp_ep, "한국판 화수": kr_ep_str, "제목": title, "에피소드 분류 키워드": category, "에피소드 컬러 코드": colorCode, "시청 상태": watched };
+                            });
+                            importedEpisodes = parseCustomFormat(customData);
+                        } else if (fileExtension === 'xlsx') {
+                            const workbook = XLSX.read(e.target.result, { type: 'array' });
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
+                            const customData = XLSX.utils.sheet_to_json(worksheet);
+                            importedEpisodes = parseCustomFormat(customData);
+                        } else {
+                            throw new Error('지원하지 않는 파일 형식입니다.');
+                        }
+
+                        if (importedEpisodes.length > 0) {
+                            if (confirm(`총 ${importedEpisodes.length}개의 에피소드를 가져옵니다. 현재 목록을 덮어쓰시겠습니까?`)) {
+                                episodes = importedEpisodes;
+                                openSeasons = new Set(); 
+                                episodes.sort((a, b) => a.jp_ep - b.jp_ep);
                                 saveData();
                                 render();
                                 alert('성공적으로 데이터를 가져왔습니다.');
                             }
-                        } else { throw new Error('Invalid file format'); }
+                        } else {
+                            throw new Error('가져올 유효한 데이터가 없습니다.');
+                        }
+
                     } catch (error) {
-                        alert('파일을 가져오는 데 실패했습니다. 유효한 JSON 파일인지 확인해주세요.');
+                        console.error(error);
+                        alert(`파일을 가져오는 데 실패했습니다: ${error.message}`);
                     } finally {
                         importFileInput.value = '';
                     }
                 };
-                reader.readAsText(file);
+                
+                if (fileExtension === 'xlsx') {
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.readAsText(file, 'UTF-8');
+                }
+            }
+            
+            // [수정] 한국판 화수 문자열을 파싱하는 헬퍼 함수
+            function parseKoreanEpisodeString(kr_ep_str) {
+                const match = kr_ep_str.match(/^(애X)?(\d+)-(\d+)$/);
+                if (match) {
+                    return {
+                        prefix: match[1] || '', // '애X' 또는 ''
+                        season: parseInt(match[2], 10),
+                        episode: parseInt(match[3], 10)
+                    };
+                }
+                // 매치 실패 시 기본값 반환
+                return { prefix: '', season: 0, episode: 0 };
+            }
+
+            function parseCustomFormat(data) {
+                return data.map(item => {
+                    const jp_ep = parseInt(item["일본판 화수"], 10);
+                    const kr_ep_str = item["한국판 화수"] || '0-0';
+                    const parsedKr = parseKoreanEpisodeString(kr_ep_str);
+                    
+                    return {
+                        id: `jp-${jp_ep}`,
+                        jp_ep: jp_ep,
+                        kr_ep_str: kr_ep_str, // 원본 문자열 저장
+                        kr_season: parsedKr.season,
+                        kr_ep: parsedKr.episode,
+                        kr_prefix: parsedKr.prefix,
+                        title: item["제목"] || '제목 없음',
+                        category: item["에피소드 분류 키워드"] || 'TV',
+                        colorCode: item["에피소드 컬러 코드"] || '#FFFFFF',
+                        watched: String(item["시청 상태"]).toLowerCase() === 'true' || item["시청 상태"] === true
+                    };
+                }).filter(item => !isNaN(item.jp_ep));
             }
             
             function handleViewChange(view) { currentView = view; render(); }
@@ -382,41 +486,69 @@
                     if (currentFilter !== 'all' || searchTerm) { render(); } else {
                         const checkboxInList = episodeListContainer.querySelector(`.episode-check[data-id="${id}"]`);
                         if(checkboxInList) checkboxInList.checked = checked;
-                        const seasonNum = episode.kr_season;
-                        const seasonEpisodes = episodes.filter(ep => ep.kr_season == seasonNum);
-                        const allWatchedInSeason = seasonEpisodes.every(ep => ep.watched);
-                        const seasonCheckbox = episodeListContainer.querySelector(`.season-check[data-season="${seasonNum}"]`);
+                        
+                        const seasonKey = `${episode.kr_prefix || ''}${episode.kr_season}`;
+                        const allOriginalEpisodesInSeason = episodes.filter(e => e.kr_season === episode.kr_season && e.kr_prefix === episode.kr_prefix);
+                        const allWatchedInSeason = allOriginalEpisodesInSeason.every(e => e.watched);
+                        const seasonCheckbox = episodeListContainer.querySelector(`.season-check[data-season-key="${seasonKey}"]`);
                         if(seasonCheckbox) seasonCheckbox.checked = allWatchedInSeason;
                     }
                 }
             }
-            function handleSeasonCheck(seasonNum, checked) {
-                episodes.forEach(ep => { if (ep.kr_season == seasonNum) ep.watched = checked; });
+            
+            // [수정] 시즌 전체 선택 로직
+            function handleSeasonCheck(seasonKey, checked) {
+                episodes.forEach(ep => { 
+                    const currentKey = `${ep.kr_prefix || ''}${ep.kr_season}`;
+                    if (currentKey === seasonKey) {
+                        ep.watched = checked;
+                    }
+                });
                 saveData();
                 render();
             }
-            function handleAccordionToggle(seasonNum) {
-                if (openSeasons.has(seasonNum)) openSeasons.delete(seasonNum);
-                else openSeasons.add(seasonNum);
+
+            function handleAccordionToggle(seasonKey) {
+                if (openSeasons.has(seasonKey)) openSeasons.delete(seasonKey);
+                else openSeasons.add(seasonKey);
                 saveData();
-                const header = episodeListContainer.querySelector(`.p-3[data-season="${seasonNum}"]`);
+                const header = episodeListContainer.querySelector(`.p-3[data-season-key="${seasonKey}"]`);
                 if(header) {
                     header.querySelector('.fa-chevron-down').classList.toggle('rotate-180');
                     header.nextElementSibling.classList.toggle('open');
                 }
             }
+            
+            // [수정] 새 회차 추가 핸들러
             function handleAddEpisode() { 
                 const jp_ep = parseInt(document.getElementById('new-jp-ep').value);
-                const kr_season = parseInt(document.getElementById('new-kr-season').value);
-                const kr_ep = parseInt(document.getElementById('new-kr-ep').value);
+                const kr_ep_str = document.getElementById('new-kr-ep-str').value.trim();
                 const title = document.getElementById('new-title').value.trim();
 
-                if (!jp_ep || !kr_season || !kr_ep || !title) {
+                if (!jp_ep || !kr_ep_str || !title) {
                     alert('모든 필드를 입력해주세요.');
                     return;
                 }
 
-                const newEpisode = { id: `jp-${jp_ep}`, jp_ep, kr_season, kr_ep, title, watched: false };
+                const parsedKr = parseKoreanEpisodeString(kr_ep_str);
+                if (parsedKr.season === 0 && parsedKr.episode === 0 && kr_ep_str !== '0-0') {
+                    alert('한국판 화수 형식이 올바르지 않습니다. (예: 1-1 또는 애X1-1)');
+                    return;
+                }
+
+                const newEpisode = { 
+                    id: `jp-${jp_ep}`,
+                    jp_ep: jp_ep,
+                    kr_ep_str: kr_ep_str,
+                    kr_season: parsedKr.season,
+                    kr_ep: parsedKr.episode,
+                    kr_prefix: parsedKr.prefix,
+                    title: title,
+                    watched: false, 
+                    category: 'TV', 
+                    colorCode: '#FFFFFF'
+                };
+
                 if (episodes.some(ep => ep.id === newEpisode.id)) {
                     alert('이미 존재하는 일본판 회차입니다.');
                     return;
@@ -427,8 +559,7 @@
                 saveData();
                 
                 document.getElementById('new-jp-ep').value = '';
-                document.getElementById('new-kr-season').value = '';
-                document.getElementById('new-kr-ep').value = '';
+                document.getElementById('new-kr-ep-str').value = '';
                 document.getElementById('new-title').value = '';
                 
                 addEpisodeForm.classList.add('hidden');
@@ -463,7 +594,27 @@
             krBtn.addEventListener('click', () => handleViewChange('kr'));
             jpBtn.addEventListener('click', () => handleViewChange('jp'));
             resetBtn.addEventListener('click', handleReset);
-            exportBtn.addEventListener('click', handleExport);
+            
+            exportBtnToggle.addEventListener('click', () => {
+                exportOptions.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', (e) => {
+                const exportContainer = document.getElementById('export-container');
+                if (!exportContainer.contains(e.target)) {
+                    exportOptions.classList.add('hidden');
+                }
+            });
+
+            document.querySelectorAll('.export-format-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const format = e.target.dataset.format;
+                    handleExport(format);
+                    exportOptions.classList.add('hidden');
+                });
+            });
+
             importBtn.addEventListener('click', () => importFileInput.click());
             importFileInput.addEventListener('change', handleImport);
             searchBar.addEventListener('input', (e) => { searchTerm = e.target.value; render(); });
@@ -478,9 +629,12 @@
                 const deleteBtn = target.closest('.delete-episode-btn');
                 if (deleteBtn) { handleDeleteEpisode(deleteBtn.dataset.id); return; }
                 if (target.matches('.episode-check')) { handleEpisodeCheck(target.dataset.id, target.checked); return; }
-                if (target.matches('.season-check')) { handleSeasonCheck(target.dataset.season, target.checked); return; }
-                const header = target.closest('.p-3[data-season]');
-                if (header) { handleAccordionToggle(header.dataset.season); }
+                // [수정] 시즌 전체 선택 이벤트
+                const seasonCheck = target.closest('.season-check');
+                if (seasonCheck) { handleSeasonCheck(seasonCheck.dataset.seasonKey, seasonCheck.checked); return; }
+                // [수정] 아코디언 토글 이벤트
+                const header = target.closest('.p-3[data-season-key]');
+                if (header) { handleAccordionToggle(header.dataset.seasonKey); }
             });
 
             // --- 초기화 ---
